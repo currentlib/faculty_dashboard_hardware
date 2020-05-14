@@ -2,7 +2,7 @@
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
 #include <PubSubClient.h>
-#include <MQTT.h>
+//#include <MQTT.h>
 #include <SPI.h>
 #include <MFRC522.h>
 
@@ -22,10 +22,6 @@ void setupAP(void);
 
 ESP8266WebServer server(80);
 
-
-WiFiClient wclient;
-PubSubClient client(wclient, "tailor.cloudmqtt.com", 11847);
-
 String ssid = "";
 String passphrase = "";
 String st;
@@ -43,6 +39,19 @@ String mpass = "";
 
 
 String isAllowed = "";
+bool isAP = false;
+
+
+WiFiClient wclient;
+PubSubClient client(wclient);
+
+const char stringToChar(String input) {
+  char ret = {};
+  for (int i=0; i<input.length(); i++) {
+    ret+=input[i];
+  }
+  return ret;
+}
 
 
 void setup() {
@@ -63,9 +72,8 @@ void setup() {
   mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD - MFRC522 Card Reader details
   Serial.println(F("Scan PICC to see UID, SAK, type, and data blocks..."));
   readMqttCredentials();
-  // read eeprom for ssid and pass
   Serial.println("Reading EEPROM ssid");
-  String esid;
+  String esid = "";
   for (int i = 0; i < 32; ++i)
     {
       esid += char(EEPROM.read(i));
@@ -80,6 +88,25 @@ void setup() {
     }
   Serial.print("PASS: ");
   Serial.println(epass); 
+
+
+  Serial.print("Mqtt address: ");
+  Serial.println(maddress);
+  Serial.print("Topic: ");
+  Serial.println(mtopic);
+  Serial.print("Port: ");
+  mport = strport.toInt();
+  Serial.println(mport);
+  Serial.print("User: ");
+  Serial.println(muser);
+  Serial.print("Pass: ");
+  Serial.println(mpass);
+  Serial.print("SSID: ");
+  Serial.println(ssid);
+  Serial.print("SSID: ");
+  Serial.println(passphrase);
+
+  
   if ( esid.length() > 1 ) {
       WiFi.begin(esid.c_str(), epass.c_str());
       if (testWifi()) {
@@ -92,32 +119,36 @@ void setup() {
 }
 
 void loop() {
-  if (mfrc522.PICC_IsNewCardPresent() and mfrc522.PICC_ReadCardSerial()) {
-    Serial.println("MQTT"); 
-    mqttConnect();
-    String id = "";
-    for (int i=0; i<4; i++) {
-      id+=mfrc522.uid.uidByte[i];
+  if (!isAP) {
+    if (mfrc522.PICC_IsNewCardPresent() and mfrc522.PICC_ReadCardSerial()) {
+      Serial.println("MQTT"); 
+      mqttConnect();
+      String id = "";
+      for (int i=0; i<4; i++) {
+        id+=mfrc522.uid.uidByte[i];
+      }
+      Serial.println(id); 
+      mqttPublish(client, mtopic, id, "short", "0");
+      unsigned long time = millis();
+      while ((millis()-time < 5000) && (isAllowed == "")) {
+        client.loop();
+        delay(100);
+      }
+      if (isAllowed == "allow") {
+        Serial.println("Allowed");
+        digitalWrite(GRN_LED, HIGH);
+        delay(3000);
+        digitalWrite(GRN_LED, LOW);
+      } else {
+        digitalWrite(RED_LED, HIGH);
+        delay(3000);
+        digitalWrite(RED_LED, LOW);
+      }
+      
+      isAllowed = "";
     }
-    Serial.println(id); 
-    mqttPublish(client, "test", id, "short", "0");
-    unsigned long time = millis();
-    while ((millis()-time < 5000) && (isAllowed == "")) {
-      client.loop();
-      delay(100);
-    }
-    if (isAllowed == "allow") {
-      Serial.println("Allowed");
-      digitalWrite(GRN_LED, HIGH);
-      delay(3000);
-      digitalWrite(GRN_LED, LOW);
-    } else {
-      digitalWrite(RED_LED, HIGH);
-      delay(3000);
-      digitalWrite(RED_LED, LOW);
-    }
-    
-    isAllowed = "";
+  } else {
+    digitalWrite(GRN_LED, HIGH);  
   }
   server.handleClient();
 }

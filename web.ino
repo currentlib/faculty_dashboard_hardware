@@ -26,6 +26,7 @@ void launchWeb(int webtype) {
 }
 
 void setupAP(void) {
+  isAP = true;
   WiFi.disconnect();
   WiFi.mode(WIFI_AP);
   delay(100);
